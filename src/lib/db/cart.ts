@@ -1,14 +1,14 @@
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { Cart, CartItem, Prisma } from "@prisma/client";
+import { getServerSession } from "next-auth";
 import { cookies } from "next/dist/client/components/headers";
 import { prisma } from "./prisma";
-import { getServerSession } from "next-auth";
-import { authOptionss } from "@/app/api/auth/[...nextauth]/route";
 
 export type CartWithProducts = Prisma.CartGetPayload<{
   include: { items: { include: { product: true } } };
 }>;
 
-export type CartItemwithProduct = Prisma.CartItemGetPayload<{
+export type CartItemWithProduct = Prisma.CartItemGetPayload<{
   include: { product: true };
 }>;
 
@@ -18,8 +18,9 @@ export type ShoppingCart = CartWithProducts & {
 };
 
 export async function getCart(): Promise<ShoppingCart | null> {
-  const session = await getServerSession(authOptionss);
-  let cart: CartWithProducts | null;
+  const session = await getServerSession(authOptions);
+
+  let cart: CartWithProducts | null = null;
 
   if (session) {
     cart = await prisma.cart.findFirst({
@@ -51,7 +52,8 @@ export async function getCart(): Promise<ShoppingCart | null> {
 }
 
 export async function createCart(): Promise<ShoppingCart> {
-  const session = await getServerSession(authOptionss);
+  const session = await getServerSession(authOptions);
+
   let newCart: Cart;
 
   if (session) {
@@ -62,10 +64,10 @@ export async function createCart(): Promise<ShoppingCart> {
     newCart = await prisma.cart.create({
       data: {},
     });
-  }
 
-  // Note: Needs encryption + secure settings in real production app
-  cookies().set("localCartId", newCart.id);
+    // Note: Needs encryption + secure settings in real production app
+    cookies().set("localCartId", newCart.id);
+  }
 
   return {
     ...newCart,
@@ -75,7 +77,7 @@ export async function createCart(): Promise<ShoppingCart> {
   };
 }
 
-export async function mergeAnonymousCart(userId: string) {
+export async function mergeAnonymousCartIntoUserCart(userId: string) {
   const localCartId = cookies().get("localCartId")?.value;
 
   const localCart = localCartId
@@ -116,7 +118,7 @@ export async function mergeAnonymousCart(userId: string) {
     } else {
       await tx.cart.create({
         data: {
-          userId: userId,
+          userId,
           items: {
             createMany: {
               data: localCart.items.map((item) => ({
@@ -128,14 +130,16 @@ export async function mergeAnonymousCart(userId: string) {
         },
       });
     }
+
     await tx.cart.delete({
       where: { id: localCart.id },
     });
+    // throw Error("Transaction failed");
     cookies().set("localCartId", "");
   });
 }
 
-function mergeCartItems(...cartItems: CartItem[][]) {
+function mergeCartItems(...cartItems: CartItem[][]): CartItem[] {
   return cartItems.reduce((acc, items) => {
     items.forEach((item) => {
       const existingItem = acc.find((i) => i.productId === item.productId);

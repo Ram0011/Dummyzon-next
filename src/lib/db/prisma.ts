@@ -4,7 +4,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const prismaBase = globalForPrisma.prisma || new PrismaClient();
+const prismaBase = globalForPrisma.prisma ?? new PrismaClient();
 
 export const prisma = prismaBase.$extends({
   query: {
